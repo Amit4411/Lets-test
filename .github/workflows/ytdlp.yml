@@ -1,0 +1,102 @@
+name: Download Audio from YouTube via yt-dlp
+
+# HOW TO USE:
+# Single song:   ytdlp: https://youtu.be/XXXXX
+# Full playlist: ytdlp: https://youtube.com/playlist?list=XXXXX
+# Batch range:   ytdlp: https://youtube.com/playlist?list=XXXXX start:1 end:60
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  download:
+    if: startsWith(github.event.issue.title, 'ytdlp:')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install yt-dlp
+        uses: AnimMouse/setup-yt-dlp@v3
+
+      - name: Parse issue title
+        id: parse
+        run: |
+          TITLE="${{ github.event.issue.title }}"
+
+          # Remove the "ytdlp:" prefix
+          REST="${TITLE#ytdlp:}"
+          REST="${REST## }"
+
+          # Extract start: and end: if present
+          START=$(echo "$REST" | grep -oP 'start:\K[0-9]+' || echo "")
+          END=$(echo   "$REST" | grep -oP 'end:\K[0-9]+'   || echo "")
+
+          # Extract the URL (first word that starts with http)
+          URL=$(echo "$REST" | grep -oP 'https?://[^ ]+' | head -1)
+
+          echo "url=$URL"     >> $GITHUB_OUTPUT
+          echo "start=$START" >> $GITHUB_OUTPUT
+          echo "end=$END"     >> $GITHUB_OUTPUT
+
+          echo "Parsed → URL: $URL | start: $START | end: $END"
+
+      - name: Download audio
+        run: |
+          mkdir -p music
+
+          # Write YouTube cookies from secret to a temp file
+          echo "${{ secrets.YOUTUBE_COOKIES }}" > /tmp/cookies.txt
+
+          URL="${{ steps.parse.outputs.url }}"
+          START="${{ steps.parse.outputs.start }}"
+          END="${{ steps.parse.outputs.end }}"
+
+          # Build optional playlist range flags
+          RANGE_FLAGS=""
+          if [ -n "$START" ]; then RANGE_FLAGS="$RANGE_FLAGS --playlist-start $START"; fi
+          if [ -n "$END"   ]; then RANGE_FLAGS="$RANGE_FLAGS --playlist-end $END";   fi
+
+          # Single video (no playlist) — skip playlist flags
+          IS_PLAYLIST=$(echo "$URL" | grep -c "list=" || true)
+          if [ "$IS_PLAYLIST" -eq 0 ] && [ -z "$START" ] && [ -z "$END" ]; then
+            RANGE_FLAGS="--no-playlist"
+          fi
+
+          yt-dlp \
+            --extract-audio \
+            --audio-format mp3 \
+            --audio-quality 128K \
+            --output "music/%(title)s.%(ext)s" \
+            --cookies /tmp/cookies.txt \
+            --sleep-interval 1 \
+            $RANGE_FLAGS \
+            "$URL"
+
+      - name: Commit downloaded files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add music/
+          git diff --cached --quiet && echo "No new files to commit" && exit 0
+          git commit -m "feat: add songs via yt-dlp (issue #${{ github.event.issue.number }})"
+          git push
+
+      - name: Comment and close issue
+        uses: peter-evans/close-issue@v3
+        with:
+          issue-number: ${{ github.event.issue.number }}
+          comment: |
+            ✅ Done! Songs have been downloaded and added to the `music/` folder.
+
+            **Details:**
+            - URL: `${{ steps.parse.outputs.url }}`
+            - Range: start=`${{ steps.parse.outputs.start }}` end=`${{ steps.parse.outputs.end }}`
+
+            The site will rebuild automatically — refresh your player in ~1 minute to see the new tracks.
