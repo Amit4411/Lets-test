@@ -1,0 +1,61 @@
+name: Deploy Music Player to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Generate music/index.json manifest
+        run: |
+          python3 - <<'EOF'
+          import os, json
+          music_dir = "music"
+          if not os.path.isdir(music_dir):
+              os.makedirs(music_dir)
+          exts = {'.mp3','.ogg','.wav','.flac','.aac','.m4a','.opus',
+                  '.mp4','.webm','.mkv','.mov','.ogv'}
+          files = sorted([
+              f for f in os.listdir(music_dir)
+              if os.path.splitext(f)[1].lower() in exts
+          ])
+          with open(os.path.join(music_dir, "index.json"), "w") as fp:
+              json.dump(files, fp, indent=2)
+          print(f"Generated index.json with {len(files)} file(s)")
+          EOF
+
+      - name: Commit updated manifest (if changed)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add music/index.json
+          git diff --cached --quiet || git commit -m "chore: update music manifest [skip ci]"
+          git push || true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
