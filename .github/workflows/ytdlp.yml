@@ -1,11 +1,15 @@
 name: Download Audio/Video from YouTube via yt-dlp
 
 # HOW TO USE:
-# Audio (MP3):   ytdlp: https://youtu.be/XXXXX
-# Video (MP4):   ytdlp: https://youtu.be/XXXXX format:video
-# Full playlist: ytdlp: https://youtube.com/playlist?list=XXXXX
-# Video playlist:ytdlp: https://youtube.com/playlist?list=XXXXX format:video
-# Batch range:   ytdlp: https://youtube.com/playlist?list=XXXXX start:1 end:60
+# Audio (MP3):      ytdlp: https://youtu.be/XXXXX
+# Video 480p (MP4): ytdlp: https://youtu.be/XXXXX format:video
+# Video 720p (MP4): ytdlp: https://youtu.be/XXXXX format:video quality:720
+# Video 360p (MP4): ytdlp: https://youtu.be/XXXXX format:video quality:360
+# Full playlist:    ytdlp: https://youtube.com/playlist?list=XXXXX
+# Batch range:      ytdlp: https://youtube.com/playlist?list=XXXXX start:1 end:60
+#
+# ⚠️  GitHub has a 100 MB file size limit per file.
+#     480p is the safe default. 720p may exceed 100 MB for videos > 5 min.
 
 on:
   issues:
@@ -46,15 +50,20 @@ jobs:
             FORMAT="video"
           fi
 
+          # Extract quality: (360, 480, 720, 1080), default 480 for video
+          QUALITY=$(echo "$REST" | grep -oP 'quality:\K[0-9]+' || echo "")
+          if [ -z "$QUALITY" ]; then QUALITY="480"; fi
+
           # Extract the URL (first word that starts with http)
           URL=$(echo "$REST" | grep -oP 'https?://[^ ]+' | head -1)
 
-          echo "url=$URL"       >> $GITHUB_OUTPUT
-          echo "start=$START"   >> $GITHUB_OUTPUT
-          echo "end=$END"       >> $GITHUB_OUTPUT
-          echo "format=$FORMAT" >> $GITHUB_OUTPUT
+          echo "url=$URL"         >> $GITHUB_OUTPUT
+          echo "start=$START"     >> $GITHUB_OUTPUT
+          echo "end=$END"         >> $GITHUB_OUTPUT
+          echo "format=$FORMAT"   >> $GITHUB_OUTPUT
+          echo "quality=$QUALITY" >> $GITHUB_OUTPUT
 
-          echo "Parsed → URL: $URL | format: $FORMAT | start: $START | end: $END"
+          echo "Parsed → URL: $URL | format: $FORMAT | quality: ${QUALITY}p | start: $START | end: $END"
 
       - name: Download
         run: |
@@ -94,10 +103,11 @@ jobs:
           fi
 
           # ── Download ─────────────────────────────────────────
+          QUALITY="${{ steps.parse.outputs.quality }}"
           if [ "$FORMAT" = "video" ]; then
-            echo "🎬 Downloading as MP4 video"
+            echo "🎬 Downloading as MP4 video (max ${QUALITY}p)"
             yt-dlp \
-              -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
+              -f "bestvideo[height<=${QUALITY}][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=${QUALITY}]+bestaudio/best[height<=${QUALITY}]" \
               --merge-output-format mp4 \
               --output "music/%(title)s.%(ext)s" \
               --socket-timeout 60 \
@@ -141,7 +151,7 @@ jobs:
 
             **Details:**
             - URL: `${{ steps.parse.outputs.url }}`
-            - Format: `${{ steps.parse.outputs.format }}`
+            - Format: `${{ steps.parse.outputs.format }}` | Quality: `${{ steps.parse.outputs.quality }}p`
             - Range: start=`${{ steps.parse.outputs.start }}` end=`${{ steps.parse.outputs.end }}`
 
             The site will rebuild automatically — refresh your player in ~1 minute to see the new tracks.
