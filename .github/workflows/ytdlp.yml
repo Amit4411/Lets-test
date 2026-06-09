@@ -1,8 +1,10 @@
-name: Download Audio from YouTube via yt-dlp
+name: Download Audio/Video from YouTube via yt-dlp
 
 # HOW TO USE:
-# Single song:   ytdlp: https://youtu.be/XXXXX
+# Audio (MP3):   ytdlp: https://youtu.be/XXXXX
+# Video (MP4):   ytdlp: https://youtu.be/XXXXX format:video
 # Full playlist: ytdlp: https://youtube.com/playlist?list=XXXXX
+# Video playlist:ytdlp: https://youtube.com/playlist?list=XXXXX format:video
 # Batch range:   ytdlp: https://youtube.com/playlist?list=XXXXX start:1 end:60
 
 on:
@@ -38,22 +40,30 @@ jobs:
           START=$(echo "$REST" | grep -oP 'start:\K[0-9]+' || echo "")
           END=$(echo   "$REST" | grep -oP 'end:\K[0-9]+'   || echo "")
 
+          # Extract format: if present (audio or video), default to audio
+          FORMAT="audio"
+          if echo "$REST" | grep -qi 'format:video'; then
+            FORMAT="video"
+          fi
+
           # Extract the URL (first word that starts with http)
           URL=$(echo "$REST" | grep -oP 'https?://[^ ]+' | head -1)
 
-          echo "url=$URL"     >> $GITHUB_OUTPUT
-          echo "start=$START" >> $GITHUB_OUTPUT
-          echo "end=$END"     >> $GITHUB_OUTPUT
+          echo "url=$URL"       >> $GITHUB_OUTPUT
+          echo "start=$START"   >> $GITHUB_OUTPUT
+          echo "end=$END"       >> $GITHUB_OUTPUT
+          echo "format=$FORMAT" >> $GITHUB_OUTPUT
 
-          echo "Parsed → URL: $URL | start: $START | end: $END"
+          echo "Parsed → URL: $URL | format: $FORMAT | start: $START | end: $END"
 
-      - name: Download audio
+      - name: Download
         run: |
           mkdir -p music
 
           URL="${{ steps.parse.outputs.url }}"
           START="${{ steps.parse.outputs.start }}"
           END="${{ steps.parse.outputs.end }}"
+          FORMAT="${{ steps.parse.outputs.format }}"
 
           # Build optional playlist range flags
           RANGE_FLAGS=""
@@ -83,18 +93,35 @@ jobs:
             echo "⚠️  No YOUTUBE_COOKIES secret — YouTube may block this download"
           fi
 
-          yt-dlp \
-            --extract-audio \
-            --audio-format mp3 \
-            --audio-quality 0 \
-            --output "music/%(title)s.%(ext)s" \
-            --socket-timeout 60 \
-            --retries 5 \
-            --fragment-retries 5 \
-            --no-progress \
-            $COOKIE_FLAGS \
-            $RANGE_FLAGS \
-            "$URL"
+          # ── Download ─────────────────────────────────────────
+          if [ "$FORMAT" = "video" ]; then
+            echo "🎬 Downloading as MP4 video"
+            yt-dlp \
+              -f "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best" \
+              --merge-output-format mp4 \
+              --output "music/%(title)s.%(ext)s" \
+              --socket-timeout 60 \
+              --retries 5 \
+              --fragment-retries 5 \
+              --no-progress \
+              $COOKIE_FLAGS \
+              $RANGE_FLAGS \
+              "$URL"
+          else
+            echo "🎵 Downloading as MP3 audio"
+            yt-dlp \
+              --extract-audio \
+              --audio-format mp3 \
+              --audio-quality 0 \
+              --output "music/%(title)s.%(ext)s" \
+              --socket-timeout 60 \
+              --retries 5 \
+              --fragment-retries 5 \
+              --no-progress \
+              $COOKIE_FLAGS \
+              $RANGE_FLAGS \
+              "$URL"
+          fi
 
       - name: Commit downloaded files
         run: |
@@ -102,7 +129,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add music/
           git diff --cached --quiet && echo "No new files to commit" && exit 0
-          git commit -m "feat: add songs via yt-dlp (issue #${{ github.event.issue.number }})"
+          git commit -m "feat: add media via yt-dlp (issue #${{ github.event.issue.number }})"
           git push
 
       - name: Comment and close issue
@@ -110,10 +137,11 @@ jobs:
         with:
           issue-number: ${{ github.event.issue.number }}
           comment: |
-            ✅ Done! Songs have been downloaded and added to the `music/` folder.
+            ✅ Done! Media has been downloaded and added to the `music/` folder.
 
             **Details:**
             - URL: `${{ steps.parse.outputs.url }}`
+            - Format: `${{ steps.parse.outputs.format }}`
             - Range: start=`${{ steps.parse.outputs.start }}` end=`${{ steps.parse.outputs.end }}`
 
             The site will rebuild automatically — refresh your player in ~1 minute to see the new tracks.
