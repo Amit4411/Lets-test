@@ -51,9 +51,6 @@ jobs:
         run: |
           mkdir -p music
 
-          # Write YouTube cookies from secret to a temp file
-          echo "${{ secrets.YOUTUBE_COOKIES }}" > /tmp/cookies.txt
-
           URL="${{ steps.parse.outputs.url }}"
           START="${{ steps.parse.outputs.start }}"
           END="${{ steps.parse.outputs.end }}"
@@ -69,13 +66,38 @@ jobs:
             RANGE_FLAGS="--no-playlist"
           fi
 
+          # ── Cookies setup ──────────────────────────────────
+          COOKIE_FLAGS=""
+          if [ -n "${{ secrets.YOUTUBE_COOKIES }}" ]; then
+            echo "${{ secrets.YOUTUBE_COOKIES }}" > /tmp/cookies_raw.txt
+
+            # Auto-fix: add Netscape header if missing
+            FIRST=$(head -1 /tmp/cookies_raw.txt)
+            if [[ "$FIRST" != "# Netscape HTTP Cookie File"* ]]; then
+              echo "# Netscape HTTP Cookie File" | cat - /tmp/cookies_raw.txt > /tmp/cookies.txt
+            else
+              cp /tmp/cookies_raw.txt /tmp/cookies.txt
+            fi
+
+            # Validate — yt-dlp will error if format is still wrong, so test first
+            if yt-dlp --cookies /tmp/cookies.txt --simulate --quiet "$URL" 2>/dev/null; then
+              echo "✅ Cookies valid — using cookies"
+              COOKIE_FLAGS="--cookies /tmp/cookies.txt"
+            else
+              echo "⚠️  Cookies rejected — trying without cookies"
+              COOKIE_FLAGS=""
+            fi
+          else
+            echo "ℹ️  No YOUTUBE_COOKIES secret set — downloading without cookies"
+          fi
+
           yt-dlp \
             --extract-audio \
             --audio-format mp3 \
             --audio-quality 128K \
             --output "music/%(title)s.%(ext)s" \
-            --cookies /tmp/cookies.txt \
             --sleep-interval 1 \
+            $COOKIE_FLAGS \
             $RANGE_FLAGS \
             "$URL"
 
