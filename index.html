@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MediaPlayer</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- ── Mini Player ──────────────────────────────────── -->
+<div class="mini-player hidden" id="miniPlayer">
+  <div class="mini-art" id="miniArt">♫</div>
+  <div class="mini-info">
+    <span class="mini-title" id="miniTitle">No track</span>
+    <span class="mini-repo" id="miniRepo"></span>
+  </div>
+  <div class="mini-controls">
+    <button class="mini-btn" id="miniPrev">⏮</button>
+    <button class="mini-btn play" id="miniPlay">▶</button>
+    <button class="mini-btn" id="miniNext">⏭</button>
+  </div>
+  <button class="mini-close" id="miniClose">✕</button>
+</div>
+
+<!-- ── Context Menu ─────────────────────────────────── -->
+<div class="ctx-menu hidden" id="ctxMenu">
+  <div class="ctx-item" data-action="play">▶ Play now</div>
+  <div class="ctx-item" data-action="favorite">♥ Add to Favorites</div>
+  <div class="ctx-item" data-action="download">⬇ Download</div>
+  <div class="ctx-divider"></div>
+  <div class="ctx-item ctx-has-sub" data-action="addPlaylist">
+    + Add to playlist ▸
+    <div class="ctx-submenu" id="ctxPlaylists"></div>
+  </div>
+  <div class="ctx-item ctx-danger hidden" data-action="removePlaylist">✕ Remove from this playlist</div>
+</div>
+
+<!-- ── Sleep Timer Modal ─────────────────────────────── -->
+<div class="modal-overlay hidden" id="sleepModal">
+  <div class="modal sm">
+    <div class="modal-header"><h2>⏱ Sleep Timer</h2><button class="modal-close" data-close="sleepModal">✕</button></div>
+    <div class="modal-body">
+      <div class="timer-toggle-row">
+        <span class="timer-toggle-label">Sleep Timer</span>
+        <label class="toggle-switch">
+          <input type="checkbox" id="timerEnabled" />
+          <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        </label>
+      </div>
+      <div class="timer-options" id="timerOptions">
+        <button class="timer-btn" data-mins="15">15 min</button>
+        <button class="timer-btn" data-mins="30">30 min</button>
+        <button class="timer-btn" data-mins="45">45 min</button>
+        <button class="timer-btn" data-mins="60">60 min</button>
+        <button class="timer-btn" data-mins="90">90 min</button>
+        <button class="timer-btn" data-mins="120">2 hr</button>
+      </div>
+      <p class="timer-status" id="timerStatus">Timer is off</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── New Playlist Modal ────────────────────────────── -->
+<div class="modal-overlay hidden" id="newPlaylistModal">
+  <div class="modal sm">
+    <div class="modal-header"><h2>Create Playlist</h2><button class="modal-close" data-close="newPlaylistModal">✕</button></div>
+    <div class="modal-body">
+      <input type="text" id="newPlaylistName" placeholder="Playlist name..." class="text-input" maxlength="40" />
+      <button class="btn-primary full" id="createPlaylistBtn">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Settings Modal ───────────────────────────────── -->
+<div class="modal-overlay hidden" id="settingsModal">
+  <div class="modal">
+    <div class="modal-header"><h2>⚙ Settings</h2><button class="modal-close" data-close="settingsModal">✕</button></div>
+    <div class="modal-body">
+      <h3 class="settings-section-title">Music Sources (GitHub Repos)</h3>
+      <p class="settings-hint">Add GitHub repos that contain a <code>music/</code> folder. Format: <code>username/repo-name</code></p>
+      <div class="repo-list" id="repoList"></div>
+      <div class="repo-add-row">
+        <input type="text" id="repoInput" placeholder="username/repo-name" class="text-input" />
+        <button class="btn-primary" id="addRepoBtn">Add</button>
+      </div>
+      <div class="settings-divider"></div>
+      <h3 class="settings-section-title">Crossfade</h3>
+      <div class="setting-row">
+        <label>Duration: <span id="crossfadeVal">2s</span></label>
+        <input type="range" id="crossfadeSlider" min="0" max="8" step="1" value="2" />
+      </div>
+      <div class="settings-divider"></div>
+      <h3 class="settings-section-title">Setup Guide</h3>
+      <div class="guide-accordion" id="guideAccordion">
+        <details><summary>1. Add your music files</summary>
+          <p>Put <code>.mp3</code>, <code>.mp4</code>, <code>.wav</code> etc. files into the <code>music/</code> folder of your GitHub repo. Commit and push — the deploy workflow auto-generates <code>music/index.json</code>.</p>
+        </details>
+        <details><summary>2. Enable GitHub Pages</summary>
+          <p>Repo → Settings → Pages → Source: <strong>GitHub Actions</strong>. Push any commit to trigger the first deploy.</p>
+        </details>
+        <details><summary>3. Download from YouTube</summary>
+          <p>Open a GitHub Issue with title: <code>ytdlp: https://youtu.be/XXXXX</code><br/>For playlist batch: <code>ytdlp: URL start:1 end:60</code></p>
+        </details>
+        <details><summary>4. Export / Import playlist order</summary>
+          <p>Use the ↓ button to export your playlist as <code>playlist.json</code>. Use ↑ to import it back.</p>
+        </details>
+        <details><summary>5. Multi-repo (more than 1 GB of music)</summary>
+          <p>Add multiple GitHub repos in Settings above. Each repo can hold up to 1 GB. Your player combines all of them into one playlist.</p>
+        </details>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Header ────────────────────────────────────────── -->
+<header>
+  <div class="header-inner">
+    <div class="logo"><div class="logo-icon">♫</div><span>MediaPlayer</span></div>
+    <div class="header-actions">
+      <button class="hdr-btn" id="btnSleepTimer" title="Sleep Timer">⏱</button>
+      <button class="hdr-btn" id="btnMiniPlayer" title="Mini Player">⊡</button>
+      <button class="hdr-btn" id="btnTheme" title="Toggle Theme">🌙</button>
+      <button class="hdr-btn" id="btnSettings" title="Settings">⚙</button>
+    </div>
+  </div>
+</header>
+
+<!-- ── Main Layout ───────────────────────────────────── -->
+<div class="layout">
+
+  <!-- Left Sidebar: Library -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">Library</div>
+      <ul class="lib-list">
+        <li class="lib-item active" data-view="all">🎵 All Tracks</li>
+        <li class="lib-item" data-view="favorites">♥ Favorites</li>
+        <li class="lib-item" data-view="recent">🕐 Recently Played</li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-title-row">
+        <span class="sidebar-title">Playlists</span>
+        <button class="new-pl-btn" id="btnNewPlaylist" title="New Playlist">+</button>
+      </div>
+      <ul class="pl-list" id="plList"></ul>
+    </div>
+    <div class="sidebar-bottom">
+      <label class="pl-btn" title="Import playlist JSON">
+        ↑ Import
+        <input type="file" id="importFile" accept=".json" class="hidden-input" />
+      </label>
+      <button class="pl-btn" id="btnExport" title="Export playlist JSON">↓ Export</button>
+    </div>
+  </aside>
+
+  <!-- Center: Player -->
+  <main class="player-main">
+    <!-- Video -->
+    <div class="video-wrap hidden" id="videoWrap">
+      <video id="videoEl" playsinline crossorigin="anonymous"></video>
+    </div>
+    <button class="audio-only-btn hidden" id="audioOnlyBtn" title="Toggle Audio / Video">🔊 Audio Only</button>
+
+    <!-- Audio art -->
+    <div class="art-wrap" id="artWrap">
+      <div class="vinyl" id="vinyl">
+        <div class="vinyl-groove g1"></div>
+        <div class="vinyl-groove g2"></div>
+        <div class="vinyl-groove g3"></div>
+        <div class="vinyl-label" id="vinylLabel">♫</div>
+      </div>
+    </div>
+
+    <audio id="audioEl" crossorigin="anonymous"></audio>
+    <audio id="audioEl2" crossorigin="anonymous"></audio>
+
+    <!-- Now playing info -->
+    <div class="now-playing">
+      <p class="track-name" id="trackName">No track selected</p>
+      <p class="track-repo" id="trackRepo"></p>
+    </div>
+
+    <!-- Progress -->
+    <div class="progress-row">
+      <span class="time" id="currentTime">0:00</span>
+      <input type="range" id="seekBar" min="0" max="100" value="0" step="0.1" />
+      <span class="time" id="totalTime">0:00</span>
+    </div>
+
+    <!-- Transport -->
+    <div class="transport">
+      <button class="ctrl-btn sm" id="btnShuffle" title="Shuffle">⇄</button>
+      <button class="ctrl-btn" id="btnPrev">⏮</button>
+      <button class="ctrl-btn play" id="btnPlay">▶</button>
+      <button class="ctrl-btn" id="btnNext">⏭</button>
+      <button class="ctrl-btn sm" id="btnRepeat" title="Repeat">↺</button>
+    </div>
+
+    <!-- Volume + Speed + Stop -->
+    <div class="volume-row">
+      <button class="ctrl-btn xs" id="btnStop" title="Stop">■</button>
+      <button class="ctrl-btn xs" id="btnMute">🔊</button>
+      <input type="range" id="volBar" min="0" max="1" step="0.01" value="0.8" />
+      <span class="vol-label" id="volLabel">80</span>
+      <select id="speedSelect" class="speed-select" title="Playback Speed">
+        <option value="0.5">0.5×</option>
+        <option value="0.75">0.75×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.25">1.25×</option>
+        <option value="1.5">1.5×</option>
+        <option value="2">2×</option>
+      </select>
+    </div>
+
+    <!-- Equalizer -->
+    <div class="eq-row">
+      <span class="eq-label">EQ</span>
+      <button class="eq-btn active" data-preset="flat">Flat</button>
+      <button class="eq-btn" data-preset="bass">Bass+</button>
+      <button class="eq-btn" data-preset="treble">Treble+</button>
+      <button class="eq-btn" data-preset="vocal">Vocal</button>
+      <button class="eq-btn" data-preset="electronic">Electronic</button>
+    </div>
+
+    <!-- Download current track -->
+    <div class="dl-row">
+      <button class="dl-btn hidden" id="btnDownload">⬇ Download Track</button>
+    </div>
+  </main>
+
+  <!-- Right: Track List -->
+  <div class="tracklist-col">
+    <div class="tracklist-header">
+      <div class="tracklist-title-row">
+        <span class="tracklist-title" id="viewTitle">All Tracks</span>
+        <span class="track-count" id="trackCount">0</span>
+      </div>
+      <div class="tracklist-actions">
+        <button class="tl-btn" id="btnShuffleList" title="Shuffle">⇄</button>
+      </div>
+    </div>
+    <div class="search-wrap">
+      <span>🔍</span>
+      <input type="search" id="searchInput" placeholder="Search tracks..." />
+    </div>
+    <ul class="track-list" id="trackList">
+      <li class="empty-state" id="emptyState">
+        <span>🎵</span><p>No tracks</p>
+      </li>
+    </ul>
+  </div>
+
+</div><!-- /layout -->
+
+<script src="script.js"></script>
+</body>
+</html>
